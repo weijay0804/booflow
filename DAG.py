@@ -80,4 +80,10 @@ task_order = extract_graph_task_order(graph=graph, indegree=indegree)
 # 存儲的方式可以利用sqlLite去更新狀態
 
 
+        A 
+        \
+K        /
+        B  
+
+
 breakpoint()

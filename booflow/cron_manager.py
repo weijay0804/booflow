@@ -6,7 +6,8 @@ LastEditTime: 2022-12-21 23:05:05
 Description: 主要放管理 cron 任務的模組
 """
 
-from typing import List, Dict
+import subprocess
+from typing import List, Dict, Tuple
 
 
 class Cron:
@@ -40,15 +41,46 @@ class Cron:
 
         return cmd.split()
 
-    def run(self) -> bool:
+    def run(self) -> Tuple[bool, str, str]:
         """執行指令
+            會分成以下幾種狀況
+
+            1. 執行成功，則回傳 (True, None, stdout)
+            2. 程式錯誤，則回傳 (False, "program error", stderr)
+            3. 執行逾時，則回傳 (False, "time out", None)
+            4. 未知錯誤，則回傳 (False, "unknow error", error)
 
         Returns:
-            bool: 如果成功，回傳 True 反之 False
+            Tuple[bool, str]: 詳見說明
         """
 
-        # TODO 執行指令
-        print(f"{self.name} is running")
+        try:
+            r = subprocess.run(
+                self.cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=self.timeout,
+            )
+
+            if r.stderr:
+
+                return (
+                    False,
+                    "program error",
+                    r.stderr.decode("utf8").replace("\n", ""),
+                )
+
+            else:
+
+                return (True, None, r.stdout.decode("utf8").replace("\n", ""))
+
+        except subprocess.TimeoutExpired:
+
+            return (False, "time out", None)
+
+        except Exception as e:
+
+            return (False, "unknow error", str(e))
 
 
 class CronManager:

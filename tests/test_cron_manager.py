@@ -88,6 +88,36 @@ def test_cron_retry():
         assert d[1] == "program error"
 
 
+def test_cron_retry_time_zero():
+
+    test_config = {
+        "task_name": "test1",
+        "command": "python3 ./tests/case2.py",
+        "retry": 0,
+    }
+
+    cron = Cron(test_config)
+
+    result = []
+
+    r = cron.run()
+
+    result.append(r)
+
+    if not r[0]:
+
+        while cron.retry_time != 0:
+            r = cron.retry()
+
+            result.append(r)
+
+    assert len(result) == 1
+    assert not all(i[0] for i in result)
+
+    for d in result:
+        assert d[1] == "program error"
+
+
 def test_cron_manager_generate_map():
 
     tasks = [

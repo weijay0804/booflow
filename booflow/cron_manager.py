@@ -27,7 +27,10 @@ class Cron:
         self.timeout = config.get("timeout")
 
         # FIXME 如果 retry 次數設為 0 時，也會自動設為 3
-        self.retry_time = config.get("retry") or 3
+        if config.get("retry") is None:
+            self.retry_time = 3
+        else:
+            self.retry_time = config.get("retry")
 
     def __repr__(self) -> str:
 

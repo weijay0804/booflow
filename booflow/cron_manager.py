@@ -9,7 +9,7 @@ Description: 主要放管理 cron 任務的模組
 import subprocess
 from typing import List, Dict, Tuple
 
-from .interface import TaskManagerInterface
+from .interface import TaskManagerInterface, DataManagerInterface
 
 
 class Cron:
@@ -26,7 +26,6 @@ class Cron:
         self.cmd = self.__parse_cmd(config.get("command"))
         self.timeout = config.get("timeout")
 
-        # FIXME 如果 retry 次數設為 0 時，也會自動設為 3
         if config.get("retry") is None:
             self.retry_time = 3
         else:
@@ -107,7 +106,12 @@ class Cron:
 class CronManager:
     """管理排程"""
 
-    def __init__(self, tasks: List[dict], task_manager: TaskManagerInterface) -> None:
+    def __init__(
+        self,
+        tasks: List[dict],
+        task_manager: TaskManagerInterface,
+        data_manager: DataManagerInterface,
+    ) -> None:
         """建立 CronManager 實例
 
         Args:
@@ -116,6 +120,7 @@ class CronManager:
         """
 
         self.task_manager = task_manager
+        self.data_manager = data_manager
         self.task_map = self.generate_cron_dict(tasks)
 
     def generate_cron_dict(self, tasks: List[dict]) -> Dict[str, Cron]:
@@ -130,12 +135,22 @@ class CronManager:
 
         return {i["task_name"]: Cron(i) for i in tasks}
 
+    def _store_task_info(self):
+        """儲存任務的相關資訊"""
+
+        for task_name, cron in self.task_map.items():
+            self.data_manager.add_task_data(
+                task_name, " ".join(cron.cmd), cron.retry_time
+            )
+
     def run(self) -> Dict[str, list]:
         """開始執行排程
 
         Returns:
             Dict[str, list]: 執行成功和失敗的任務
         """
+
+        self._store_task_info()
 
         while not self.task_manager.is_empty():
 
@@ -152,5 +167,8 @@ class CronManager:
                     print("Retry.....")
 
             self.task_manager.call(task_name, result[0])
+            self.data_manager.add_task_status(
+                task_name, result[0], result[1], result[2]
+            )
 
         return self.task_manager.get_result()

@@ -10,6 +10,37 @@ from abc import ABC, abstractmethod
 from typing import Optional, Dict
 
 
+class DataManagerInterface(ABC):
+    """資料儲存的 Interface"""
+
+    @abstractmethod
+    def add_task_data(self, task_name: str, command: str, retry: int) -> None:
+        """儲存 task 相關的資訊
+
+        Args:
+            task_name (str): 任務名稱
+            command (str): 任務指令
+            retry (int): 重新嘗試次數
+        """
+
+        pass
+
+    @abstractmethod
+    def add_task_status(
+        self, task_name: str, status: bool, msg: str, output_msg: str
+    ) -> None:
+        """儲存 task 執行狀態
+
+        Args:
+            task_name (str): 任務名稱
+            status (bool): 任務是否執行成功
+            msg (str): 詳細資訊
+            output_msg (str): 輸出訊息
+        """
+
+        pass
+
+
 class TaskManagerInterface(ABC):
     """Task Manager Interface"""
 

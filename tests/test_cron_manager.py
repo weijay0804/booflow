@@ -125,7 +125,9 @@ def test_cron_manager_generate_map():
         {"task_name": "test2", "command": "python3 ./tests/case2.py"},
     ]
 
-    cron_manager = CronManager(tasks, None)
+    data_manager = FakeDataManager()
+
+    cron_manager = CronManager(tasks, None, data_manager)
 
     assert isinstance(cron_manager.task_map, dict)
     assert cron_manager.task_map["test1"].name == "test1"
@@ -136,7 +138,7 @@ def test_cron_manager_generate_map():
 
 from queue import Queue
 from typing import List, Dict
-from booflow.interface import TaskManagerInterface
+from booflow.interface import TaskManagerInterface, DataManagerInterface
 
 
 class FakeTaskManager(TaskManagerInterface):
@@ -176,6 +178,16 @@ class FakeTaskManager(TaskManagerInterface):
         return {"success": self.success_tasks, "fail": self.fall_tasks}
 
 
+class FakeDataManager(DataManagerInterface):
+    def add_task_data(self, task_name: str, command: str, retry: int) -> None:
+        pass
+
+    def add_task_status(
+        self, task_name: str, status: bool, msg: str, output_msg: str
+    ) -> None:
+        pass
+
+
 def test_cron_manager_run():
 
     tasks = [
@@ -186,8 +198,9 @@ def test_cron_manager_run():
     order = ["test1", "test2"]
 
     task_manager = FakeTaskManager(order)
+    data_manager = FakeDataManager()
 
-    cron_manager = CronManager(tasks, task_manager)
+    cron_manager = CronManager(tasks, task_manager, data_manager)
 
     r = cron_manager.run()
 

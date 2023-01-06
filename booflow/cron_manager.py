@@ -9,6 +9,8 @@ Description: 主要放管理 cron 任務的模組
 import subprocess
 from typing import List, Dict, Tuple
 
+from .interface import TaskManagerInterface, DataManagerInterface
+
 
 class Cron:
     """針對每一個 command 的類別"""
@@ -23,7 +25,11 @@ class Cron:
         self.name = config.get("task_name")
         self.cmd = self.__parse_cmd(config.get("command"))
         self.timeout = config.get("timeout")
-        self.retry = config.get("retry") or 3
+
+        if config.get("retry") is None:
+            self.retry_time = 3
+        else:
+            self.retry_time = config.get("retry")
 
     def __repr__(self) -> str:
 
@@ -82,19 +88,40 @@ class Cron:
 
             return (False, "unknow error", str(e))
 
+    def retry(self) -> Tuple[bool, str, str]:
+        """重新執行一次 run 函示，並將 retry_time 減 1
+
+        Returns:
+            Tuple[bool, str, str]: run 函示的回傳值
+        """
+
+        if self.retry_time == 0:
+            return
+
+        self.retry_time -= 1
+
+        return self.run()
+
 
 class CronManager:
     """管理排程"""
 
-    def __init__(self, tasks: List[dict], order: List[tuple]) -> None:
+    def __init__(
+        self,
+        tasks: List[dict],
+        task_manager: TaskManagerInterface,
+        data_manager: DataManagerInterface,
+    ) -> None:
         """建立 CronManager 實例
 
         Args:
             tasks (List[dict]): 排程任務清單
-            order (List[tuple]): 排程之間的順序關係
+            task_manager (TaskManagerInterface): implement TaskManagerInterface 的實例
         """
 
-        pass
+        self.task_manager = task_manager
+        self.data_manager = data_manager
+        self.task_map = self.generate_cron_dict(tasks)
 
     def generate_cron_dict(self, tasks: List[dict]) -> Dict[str, Cron]:
         """建立 task_name 與 Cron 物件之間的映射表
@@ -107,3 +134,41 @@ class CronManager:
         """
 
         return {i["task_name"]: Cron(i) for i in tasks}
+
+    def _store_task_info(self):
+        """儲存任務的相關資訊"""
+
+        for task_name, cron in self.task_map.items():
+            self.data_manager.add_task_data(
+                task_name, " ".join(cron.cmd), cron.retry_time
+            )
+
+    def run(self) -> Dict[str, list]:
+        """開始執行排程
+
+        Returns:
+            Dict[str, list]: 執行成功和失敗的任務
+        """
+
+        self._store_task_info()
+
+        while not self.task_manager.is_empty():
+
+            task_name = self.task_manager.next()
+
+            result = self.task_map[task_name].run()
+
+            if not result[0]:
+
+                while self.task_map[task_name].retry_time != 0:
+
+                    result = self.task_map[task_name].retry()
+
+                    print("Retry.....")
+
+            self.task_manager.call(task_name, result[0])
+            self.data_manager.add_task_status(
+                task_name, result[0], result[1], result[2]
+            )
+
+        return self.task_manager.get_result()

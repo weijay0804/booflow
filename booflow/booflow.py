@@ -6,12 +6,10 @@ LastEditTime: 2023-01-06 00:35:00
 Description: booflow 主程式
 """
 
-
-from collections import deque, defaultdict
-import subprocess
-from typing import List, Dict, Tuple
-
 import os
+import subprocess
+from collections import deque, defaultdict
+from typing import List, Dict, Tuple
 
 
 class BooFlow:

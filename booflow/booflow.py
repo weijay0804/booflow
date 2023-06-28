@@ -34,6 +34,57 @@ class BooFlow:
         self.cron_manager.run()
 
 
+class CronManager:
+    """管理排程"""
+
+    def __init__(
+        self,
+        tasks: List[dict],
+        task_manager: "TaskManager",
+    ) -> None:
+        """建立 CronManager 實例
+
+        Args:
+            tasks (List[dict]): 排程任務清單
+            task_manager (TaskManagerInterface): implement TaskManagerInterface 的實例
+        """
+
+        self.task_manager = task_manager
+        self.task_map = self.generate_cron_dict(tasks)
+
+    def generate_cron_dict(self, tasks: List[dict]) -> Dict[str, "Cron"]:
+        """建立 task_name 與 Cron 物件之間的映射表
+
+        Args:
+            tasks (List[dict]): 排程任務清單
+
+        Returns:
+            List[dict]: {"task_name1" : "Cron1", "task_name2" : "Cron2", ....}
+        """
+
+        return {i["task_name"]: Cron(i) for i in tasks}
+
+    def run(self) -> Dict[str, list]:
+        """開始執行排程
+
+        Returns:
+            Dict[str, list]: 執行成功和失敗的任務
+        """
+
+        while not self.task_manager.is_empty:
+            task_name = self.task_manager.next
+
+            result = self.task_map[task_name].run()
+
+            if not result[0]:
+                while self.task_map[task_name].retry_time != 0:
+                    result = self.task_map[task_name].retry()
+
+            self.task_manager.report(task_name, result[0])
+
+        return "OK"
+
+
 class Cron:
     """針對每一個 command 的類別"""
 
@@ -354,57 +405,46 @@ class Task:
 
 
 class TaskManager:
-    """任務管理"""
+    """任務管理器
 
-    pass
+    是 :class:`Task` 的封裝
 
+    Args:
+        - tasks_order (List[tuple]): 任務順序清單
 
-class CronManager:
-    """管理排程"""
+    Attribute:
 
-    def __init__(
-        self,
-        tasks: List[dict],
-        task_manager: "TaskManager",
-    ) -> None:
-        """建立 CronManager 實例
+        - next (str): 回傳一個目前狀態可以執行的任務名稱
 
-        Args:
-            tasks (List[dict]): 排程任務清單
-            task_manager (TaskManagerInterface): implement TaskManagerInterface 的實例
-        """
+        - is_empty (bool): 檢查目前的任務佇列是否為空
+    """
 
-        self.task_manager = task_manager
-        self.task_map = self.generate_cron_dict(tasks)
+    def __init__(self, tasks_order: List[tuple]):
+        self._task = Task(tasks_order)
 
-    def generate_cron_dict(self, tasks: List[dict]) -> Dict[str, Cron]:
-        """建立 task_name 與 Cron 物件之間的映射表
+    def report(self, task_name: str, status: bool):
+        """在任務執行完後回報是否成功執行完成
+
+            會將 `task_name` 添加到 `success_tasks` 或 `faile_tasks` 中，
+            並會重新計算 `graph` 等參數，最後重新生成新的 `tasks_order_queue`。
 
         Args:
-            tasks (List[dict]): 排程任務清單
-
-        Returns:
-            List[dict]: {"task_name1" : "Cron1", "task_name2" : "Cron2", ....}
+            task_name (str): 任務名稱
+            status (bool): 使否成功執行完成，如果是就填入 `True` ，反之就 `False`
         """
 
-        return {i["task_name"]: Cron(i) for i in tasks}
+        if status:
+            self._task.remove_success_task(task_name)
 
-    def run(self) -> Dict[str, list]:
-        """開始執行排程
+        else:
+            self._task.remove_faile_task(task_name)
 
-        Returns:
-            Dict[str, list]: 執行成功和失敗的任務
-        """
+        self._task.update_tasks_order_queue()
 
-        while not self.task_manager.is_empty():
-            task_name = self.task_manager.get_next()
+    @property
+    def is_empty(self):
+        return self._task.is_empty
 
-            result = self.task_map[task_name].run()
-
-            if not result[0]:
-                while self.task_map[task_name].retry_time != 0:
-                    result = self.task_map[task_name].retry()
-
-            self.task_manager.call(task_name, result[0])
-
-        return "OK"
+    @property
+    def next(self):
+        return self._task.next

@@ -2,14 +2,14 @@
 Author: weijay
 Date: 2023-06-22 22:27:41
 LastEditors: weijay
-LastEditTime: 2023-06-27 19:04:50
+LastEditTime: 2023-06-28 23:59:15
 Description: Task 單元測試
 '''
 
 import unittest
 from collections import defaultdict, deque
 
-from booflow.booflow import Task
+from booflow import Task
 
 
 class TestTask(unittest.TestCase):

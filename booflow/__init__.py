@@ -30,9 +30,8 @@ __all__ = ["BooFlow"]
 
 class BooFlow:
     def __init__(self, tasks: List[Dict], order: list, config: dict = {}):
-        task_manager = TaskManager(order)
-
-        self.cron_manager = CronManager(tasks, task_manager)
+        self.task_obj = Task(tasks_order=order)
+        self.task_list = tasks
 
         self.config = config
 
@@ -52,8 +51,22 @@ class BooFlow:
 
         return os.path.abspath(os.path.dirname(__name__))
 
+    def _generate_cron_dict(self, tasks: List[dict]) -> Dict[str, "Cron"]:
+        """建立 task_name 與 Cron 物件之間的映射表
+
+        Args:
+            tasks (List[dict]): 排程任務清單
+
+        Returns:
+            List[dict]: {"task_name1" : "Cron1", "task_name2" : "Cron2", ....}
+        """
+
+        return {i["task_name"]: Cron(i) for i in tasks}
+
     def run(self):
         """啟動排程"""
+
+        task_map = self._generate_cron_dict(self.task_list)
 
         if self.config.get("log_file_path"):
             logger = Logger("booflow", self.config["log_file_path"])
@@ -66,7 +79,55 @@ class BooFlow:
 
         logger.logger.info("開始執行")
 
-        self.cron_manager.run(logger=logger)
+        # BETTER 這邊的 log 紀錄可能可以想辦法簡潔一點
+        # 基本訊息
+        logger.tasks_order_queue_log(self.task_obj.tasks_order_queue)
+        logger.div_line()
+
+        while not self.task_obj.is_empty:
+            task_name = self.task_obj.next
+
+            logger.logger.info(f"開始執行任務: {task_name}")
+
+            result = task_map[task_name].run()
+
+            if not result[0]:
+                logger.logger.error(
+                    f"任務 {task_name} 執行失敗，錯誤種類: {result[1]} ， 詳細錯誤訊息: \n{result[2]}"
+                )
+
+                while task_map[task_name].retry_time != 0:
+                    logger.logger.error(f"重新嘗試執行 {task_name} ...")
+                    result = task_map[task_name].retry()
+
+                self.task_obj.report(task_name, result[0])
+
+                logger.logger.info(
+                    f"因為 {task_name} 失敗，導致 {str(self.task_obj.faile_tasks[task_name])} 無法執行"
+                )
+
+            else:
+                logger.logger.info(f"任務 {task_name} 執行完成")
+                self.task_obj.report(task_name, result[0])
+
+            logger.div_line()
+
+        logger.logger.info("執行結束")
+        logger.logger.info(f"執行成功的任務: {str(self.task_obj.success_tasks)}")
+
+        faile_tasks_list = set([i for i in self.task_obj.faile_tasks])
+
+        logger.logger.info(f"執行失敗的任務: {str(faile_tasks_list)}")
+
+        not_execute_task = set()
+
+        for values in self.task_obj.faile_tasks.values():
+            for value in values:
+                not_execute_task.add(value)
+
+        logger.logger.info(f"沒有執行的任務: {str(not_execute_task)}")
+
+        return "OK"
 
 
 class Logger:
@@ -94,94 +155,6 @@ class Logger:
         """分隔線"""
 
         self.logger.info("-" * 20)
-
-
-class CronManager:
-    """管理排程"""
-
-    def __init__(
-        self,
-        tasks: List[dict],
-        task_manager: "TaskManager",
-    ) -> None:
-        """建立 CronManager 實例
-
-        Args:
-            tasks (List[dict]): 排程任務清單
-            task_manager (TaskManagerInterface): implement TaskManagerInterface 的實例
-        """
-
-        self.task_manager = task_manager
-        self.task_map = self.generate_cron_dict(tasks)
-
-    def generate_cron_dict(self, tasks: List[dict]) -> Dict[str, "Cron"]:
-        """建立 task_name 與 Cron 物件之間的映射表
-
-        Args:
-            tasks (List[dict]): 排程任務清單
-
-        Returns:
-            List[dict]: {"task_name1" : "Cron1", "task_name2" : "Cron2", ....}
-        """
-
-        return {i["task_name"]: Cron(i) for i in tasks}
-
-    def run(self, logger: "Logger") -> Dict[str, list]:
-        """開始執行排程
-
-        Returns:
-            Dict[str, list]: 執行成功和失敗的任務
-        """
-
-        # BETTER 這邊的 log 紀錄可能可以想辦法簡潔一點
-        # 基本訊息
-        logger.tasks_order_queue_log(self.task_manager._task.tasks_order_queue)
-        logger.div_line()
-
-        while not self.task_manager.is_empty:
-            task_name = self.task_manager.next
-
-            logger.logger.info(f"開始執行任務: {task_name}")
-
-            result = self.task_map[task_name].run()
-
-            if not result[0]:
-                logger.logger.error(
-                    f"任務 {task_name} 執行失敗，錯誤種類: {result[1]} ， 詳細錯誤訊息: \n{result[2]}"
-                )
-
-                while self.task_map[task_name].retry_time != 0:
-                    logger.logger.error(f"重新嘗試執行 {task_name} ...")
-                    result = self.task_map[task_name].retry()
-
-                self.task_manager.report(task_name, result[0])
-
-                logger.logger.info(
-                    f"因為 {task_name} 失敗，導致 {str(self.task_manager._task.faile_tasks[task_name])} 無法執行"
-                )
-
-            else:
-                logger.logger.info(f"任務 {task_name} 執行完成")
-                self.task_manager.report(task_name, result[0])
-
-            logger.div_line()
-
-        logger.logger.info("執行結束")
-        logger.logger.info(f"執行成功的任務: {str(self.task_manager._task.success_tasks)}")
-
-        faile_tasks_list = set([i for i in self.task_manager._task.faile_tasks])
-
-        logger.logger.info(f"執行失敗的任務: {str(faile_tasks_list)}")
-
-        not_execute_task = set()
-
-        for values in self.task_manager._task.faile_tasks.values():
-            for value in values:
-                not_execute_task.add(value)
-
-        logger.logger.info(f"沒有執行的任務: {str(not_execute_task)}")
-
-        return "OK"
 
 
 class Cron:
@@ -271,10 +244,9 @@ class Cron:
 
 
 class Task:
-    """任務佇列 (被 :class:`TaskManager` 使用)
+    """任務佇列管理
 
-    通常會一個 :class:`Task` 會被一個 :class:`TaskManager` 管理，
-    :class:`Task` 類別只是方便被 :class:`TaskManager` 管理建立的。
+    管理任務執行的順序，會根據演算法給出在目前狀態下，可以執行的任務名稱。
 
     Args:
         - tasks_orders (List[tuple]): 任務順序清單
@@ -473,6 +445,25 @@ class Task:
 
         return True
 
+    def report(self, task_name: str, status: bool):
+        """在任務執行完後回報是否成功執行完成
+
+            會將 `task_name` 添加到 `success_tasks` 或 `faile_tasks` 中，
+            並會重新計算 `graph` 等參數，最後重新生成新的 `tasks_order_queue`。
+
+        Args:
+            task_name (str): 任務名稱
+            status (bool): 使否成功執行完成，如果是就填入 `True` ，反之就 `False`
+        """
+
+        if status:
+            self.remove_success_task(task_name)
+
+        else:
+            self.remove_faile_task(task_name)
+
+        self.update_tasks_order_queue()
+
     @property
     def next(self) -> str:
         """取得在目前狀態下，可以開始執行的任務名稱 (也就是這個任務依賴的任務已經完成，或是這個任務是獨立的任務)
@@ -501,49 +492,3 @@ class Task:
         """
 
         return len(self.tasks_order_queue) == 0 and len(self._independent_tasks_queue) == 0
-
-
-class TaskManager:
-    """任務管理器
-
-    是 :class:`Task` 的封裝
-
-    Args:
-        - tasks_order (List[tuple]): 任務順序清單
-
-    Attribute:
-
-        - next (str): 回傳一個目前狀態可以執行的任務名稱
-
-        - is_empty (bool): 檢查目前的任務佇列是否為空
-    """
-
-    def __init__(self, tasks_order: List[tuple]):
-        self._task = Task(tasks_order)
-
-    def report(self, task_name: str, status: bool):
-        """在任務執行完後回報是否成功執行完成
-
-            會將 `task_name` 添加到 `success_tasks` 或 `faile_tasks` 中，
-            並會重新計算 `graph` 等參數，最後重新生成新的 `tasks_order_queue`。
-
-        Args:
-            task_name (str): 任務名稱
-            status (bool): 使否成功執行完成，如果是就填入 `True` ，反之就 `False`
-        """
-
-        if status:
-            self._task.remove_success_task(task_name)
-
-        else:
-            self._task.remove_faile_task(task_name)
-
-        self._task.update_tasks_order_queue()
-
-    @property
-    def is_empty(self):
-        return self._task.is_empty
-
-    @property
-    def next(self):
-        return self._task.next

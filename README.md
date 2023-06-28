@@ -25,7 +25,7 @@ $ mkdir test_dir
 
 ```python
 
-from booflow import booflow
+from booflow import BooFlow
 
 # 定義任務
 # 注意! 任務名稱不能重複
@@ -52,4 +52,5 @@ taks_order = [
 ]
 
 # 執行
-booflow.run(tasks, task_order)
+bf = BooFlow(tasks, task_order)
+bf.run()

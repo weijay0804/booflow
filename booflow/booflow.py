@@ -7,19 +7,29 @@ Description: booflow 主程式
 """
 
 import os
+import logging
 import subprocess
+from datetime import datetime
 from collections import deque, defaultdict
 from typing import List, Dict, Tuple
 
 
 class BooFlow:
-    def __init__(self, tasks: List[Dict], order: list, config: dict = None):
+    def __init__(self, tasks: List[Dict], order: list, config: dict = {}):
         task_manager = TaskManager(order)
 
         self.cron_manager = CronManager(tasks, task_manager)
 
+        self.config = config
+
+        self._init_log_dir()
+
+    def _init_log_dir(self):
+        if not os.path.exists(os.path.join(self._get_root_path(), "log")):
+            os.mkdir(os.path.join(self._get_root_path(), "log"))
+
     @staticmethod
-    def get_root_path() -> str:
+    def _get_root_path() -> str:
         """取得專案根目錄
 
         Returns:
@@ -31,7 +41,45 @@ class BooFlow:
     def run(self):
         """啟動排程"""
 
-        self.cron_manager.run()
+        if self.config.get("log_file_path"):
+            logger = Logger("booflow", self.config["log_file_path"])
+
+        else:
+            log_dir = os.path.join(self._get_root_path(), "log")
+            log_file = datetime.now().strftime("%Y-%m-%d_%H:%S") + ".log"
+
+            logger = Logger("booflow", os.path.join(log_dir, log_file))
+
+        logger.logger.info("開始執行")
+
+        self.cron_manager.run(logger=logger)
+
+
+class Logger:
+    """封裝 `logging`"""
+
+    def __init__(self, log_name: str, log_file: str, level: int = logging.INFO):
+        logger = logging.getLogger(log_name)
+        formatter = logging.Formatter('[ %(asctime)s %(levelname)s] %(message)s')
+        file_handler = logging.FileHandler(log_file, mode='a')
+        file_handler.setFormatter(formatter)
+
+        logger.setLevel(level)
+        logger.addHandler(file_handler)
+
+        self.logger = logger
+
+    def tasks_order_queue_log(self, tasks_order_queue: deque):
+        """將 `tasks_order_queue` 資訊紀錄至 log 中"""
+
+        s = " -> ".join(list(tasks_order_queue))
+
+        self.logger.info(f"任務清單: {s}")
+
+    def div_line(self):
+        """分隔線"""
+
+        self.logger.info("-" * 20)
 
 
 class CronManager:
@@ -64,23 +112,60 @@ class CronManager:
 
         return {i["task_name"]: Cron(i) for i in tasks}
 
-    def run(self) -> Dict[str, list]:
+    def run(self, logger: "Logger") -> Dict[str, list]:
         """開始執行排程
 
         Returns:
             Dict[str, list]: 執行成功和失敗的任務
         """
 
+        # BETTER 這邊的 log 紀錄可能可以想辦法簡潔一點
+        # 基本訊息
+        logger.tasks_order_queue_log(self.task_manager._task.tasks_order_queue)
+        logger.div_line()
+
         while not self.task_manager.is_empty:
             task_name = self.task_manager.next
+
+            logger.logger.info(f"開始執行任務: {task_name}")
 
             result = self.task_map[task_name].run()
 
             if not result[0]:
+                logger.logger.error(
+                    f"任務 {task_name} 執行失敗，錯誤種類: {result[1]} ， 詳細錯誤訊息: \n{result[2]}"
+                )
+
                 while self.task_map[task_name].retry_time != 0:
+                    logger.logger.error(f"重新嘗試執行 {task_name} ...")
                     result = self.task_map[task_name].retry()
 
-            self.task_manager.report(task_name, result[0])
+                self.task_manager.report(task_name, result[0])
+
+                logger.logger.info(
+                    f"因為 {task_name} 失敗，導致 {str(self.task_manager._task.faile_tasks[task_name])} 無法執行"
+                )
+
+            else:
+                logger.logger.info(f"任務 {task_name} 執行完成")
+                self.task_manager.report(task_name, result[0])
+
+            logger.div_line()
+
+        logger.logger.info("執行結束")
+        logger.logger.info(f"執行成功的任務: {str(self.task_manager._task.success_tasks)}")
+
+        faile_tasks_list = set([i for i in self.task_manager._task.faile_tasks])
+
+        logger.logger.info(f"執行失敗的任務: {str(faile_tasks_list)}")
+
+        not_execute_task = set()
+
+        for values in self.task_manager._task.faile_tasks.values():
+            for value in values:
+                not_execute_task.add(value)
+
+        logger.logger.info(f"沒有執行的任務: {str(not_execute_task)}")
 
         return "OK"
 

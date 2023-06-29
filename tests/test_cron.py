@@ -8,7 +8,7 @@ Description: Cron 模組 單元測試
 
 import unittest
 
-from booflow.booflow import Cron
+from booflow import Cron
 
 TEST_CASE_PREFIX = "./tests/test_case"
 

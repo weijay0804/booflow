@@ -23,13 +23,46 @@ import logging
 import subprocess
 from datetime import datetime
 from collections import deque, defaultdict
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 
 __all__ = ["BooFlow"]
 
 
 class BooFlow:
-    def __init__(self, tasks: List[Dict], order: list, config: dict = {}):
+    """BooFlow 一個簡單易用的任務流程管理器
+
+    Args:
+        tasks (List[Dict]): 任務清單
+
+        order (List[tuple]): 任務順序清單
+
+        config (Optional[dict], optional): 參數設定
+
+    Usage:
+        首先先定義你的任務
+
+        >>> tasks = [
+        >>> {"task_name" : "task1", "command" : "echo hello"},
+        >>> {"task_name" : "task2", "command" : "python3 task2.py", "timeout" : 120, "retry" : 2}
+        >>> ]
+
+        再來定義你的任務執行順序
+
+        >>> order = [("task1", "task2")]
+
+        這樣表示你的任務執行順序是 `task1` -> `task2`
+
+        如果你有想要額外設定的參數
+
+        >>> config = {"log_file_path" : "./my_log.log"}
+
+        開始執行任務
+
+        >>> bf = BooFlow(tasks, order, config)
+        >>> bf.run()
+    """
+
+    def __init__(self, tasks: List[Dict], order: List[tuple], config: Optional[dict] = {}):
         self.task_obj = Task(tasks_order=order)
         self.task_list = tasks
 
